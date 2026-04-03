@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PALCORE Decision Partner — Parceiro de decisao com IA</title>
+  <meta name="description" content="Gera prompts estruturadas ou pede ajuda directa a IA para tomar decisoes. Ferramenta gratuita PALCORE.">
+  <meta property="og:title" content="PALCORE Decision Partner v1.0">
+  <meta property="og:description" content="O melhor prompt e ser honesto. Gera prompts ou pede ajuda a IA.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://palcore-decision-partner.netlify.app">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤝</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #08080d; }
+    input:focus, textarea:focus { border-color: rgba(233,69,96,0.4) !important; }
+    ::selection { background: rgba(233,69,96,0.3); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    @keyframes pulse { 0%,80%,100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+  /**
+   * PALCORE Decision Partner v1.0
+   * (c) 2026 Paulo Branco — PALCORE (Paulo Branco Consultoria e Gestao Imobiliaria, Unipessoal Lda)
+   * NIPC 517959682 | ORCID 0009-0003-8071-9890
+   *
+   * Metodologia original de decisao assistida por IA — prompt estruturada em 5 passos
+   * com auto-validacao.
+   *
+   * Todos os direitos reservados.
+   * Contacto: drpal.project2028@gmail.com | drpal2028.base.eth
+   * Porto, Portugal — Abril 2026
+   * Ferramentas de IA: Claude (Anthropic)
+   */
+
+  var useState = React.useState;
+  var useCallback = React.useCallback;
+  var useRef = React.useRef;
+  var e = React.createElement;
+
+  var API_ENDPOINT = "/api/decision";
+
+  function buildPrompt(tema, contexto) {
+    return "Atua como meu parceiro de decisao: rigoroso, didatico, direto e factual.\n" +
+      "Tema: " + tema + ". Contexto: " + contexto + ".\n\n" +
+      "Regras:\n" +
+      "- PT-PT, sem frases genericas.\n" +
+      "- Nao inventes. Se faltar dado, diz \"sem dados suficientes\" e pergunta.\n" +
+      "- Prioriza impacto real (economico, estrategico ou emocional).\n" +
+      "- Resposta total: 220-300 palavras.\n\n" +
+      "Ordem:\n" +
+      "1) Faz 5 perguntas cirurgicas (curtas, nao genericas).\n" +
+      "2) Depois das minhas respostas, entrega:\n" +
+      "   - Problema real (1 frase)\n" +
+      "   - Oportunidade escondida (1 frase)\n" +
+      "   - Erro mais provavel (1 frase)\n" +
+      "3) Plano:\n" +
+      "   - HOJE (24h): 3 acoes\n" +
+      "   - 30 DIAS: 3 marcos\n" +
+      "   - 6 MESES: cenario realista\n" +
+      "4) Se couber nas 300 palavras, traduz para:\n" +
+      "   - metafora clara\n" +
+      "   - checklist simples\n" +
+      "   - mantra (1 linha)\n" +
+      "5) Fecha com:\n" +
+      "\"Se so fizesses UMA coisa nas proximas 24h, seria isto: [acao].\"\n\n" +
+      "Criterio de qualidade (auto-check):\n" +
+      "Especifica? Executavel em 24h? Mensuravel? Adequada ao meu contexto?\n" +
+      "Se algum for \"nao\", refaz mais simples.";
+  }
+
+  var EXAMPLES = [
+    { label: "Carreira", tema: "Mudanca de carreira", ctx: "10 anos na mesma empresa, sem progressao ha 3." },
+    { label: "Negocio", tema: "Lancar produto digital", ctx: "Tenho audiencia pequena (500 seguidores) e um prototipo funcional." },
+    { label: "Projecto", tema: "Certificacao tecnica", ctx: "Exame em 3 semanas, nunca fiz certificacao antes, aprendo na pratica." },
+    { label: "Financas", tema: "Investimento imobiliario", ctx: "50k disponiveis, mercado em correccao, primeira compra para investimento." },
+  ];
+
+  function TypingDots() {
+    return e("span", { style: { display: "inline-flex", gap: 3, alignItems: "center" } },
+      [0, 1, 2].map(function(i) {
+        return e("span", { key: i, style: { width: 6, height: 6, borderRadius: "50%", background: "#E94560", animation: "pulse 1.2s ease-in-out " + (i * 0.2) + "s infinite" } });
+      })
+    );
+  }
+
+  function TabButton(props) {
+    return e("button", { onClick: props.onClick, style: {
+      flex: 1, padding: "12px 0", fontSize: 13, fontWeight: props.active ? 700 : 500,
+      letterSpacing: 0.5, color: props.active ? "#fff" : "rgba(255,255,255,0.4)",
+      background: props.active ? "rgba(233,69,96,0.15)" : "transparent",
+      border: "none", borderBottom: props.active ? "2px solid #E94560" : "2px solid transparent",
+      cursor: "pointer", transition: "all 0.2s", fontFamily: "inherit", textTransform: "uppercase"
+    } }, props.children);
+  }
+
+  function InputField(props) {
+    var isTextarea = (props.rows || 1) > 1;
+    var tag = isTextarea ? "textarea" : "input";
+    var fieldProps = {
+      value: props.value,
+      onChange: function(ev) { props.onChange(ev.target.value); },
+      placeholder: props.placeholder,
+      maxLength: props.maxLength,
+      style: {
+        width: "100%", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 10, color: "#fff", padding: "12px 14px", fontSize: 15, resize: isTextarea ? "vertical" : "none",
+        fontFamily: "'Outfit', sans-serif", outline: "none", boxSizing: "border-box", lineHeight: 1.5, transition: "border-color 0.2s"
+      }
+    };
+    if (isTextarea) fieldProps.rows = props.rows;
+
+    return e("div", { style: { marginBottom: 16 } },
+      e("label", { style: { fontSize: 11, color: "rgba(255,255,255,0.45)", display: "flex", justifyContent: "space-between", marginBottom: 6, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'DM Mono', monospace" } },
+        e("span", null, props.label),
+        props.maxLength ? e("span", { style: { color: props.value.length > props.maxLength * 0.9 ? "#E94560" : "rgba(255,255,255,0.25)" } }, props.value.length + "/" + props.maxLength) : null
+      ),
+      e(tag, fieldProps)
+    );
+  }
+
+  function DecisionPartner() {
+    var modeState = useState("generate");
+    var mode = modeState[0]; var setMode = modeState[1];
+    var temaState = useState("");
+    var tema = temaState[0]; var setTema = temaState[1];
+    var ctxState = useState("");
+    var contexto = ctxState[0]; var setContexto = ctxState[1];
+    var promptState = useState("");
+    var generatedPrompt = promptState[0]; var setGeneratedPrompt = promptState[1];
+    var copiedState = useState(false);
+    var copied = copiedState[0]; var setCopied = copiedState[1];
+    var aiRespState = useState("");
+    var aiResponse = aiRespState[0]; var setAiResponse = aiRespState[1];
+    var loadingState = useState(false);
+    var aiLoading = loadingState[0]; var setAiLoading = loadingState[1];
+    var errorState = useState("");
+    var aiError = errorState[0]; var setAiError = errorState[1];
+    var convState = useState([]);
+    var conversation = convState[0]; var setConversation = convState[1];
+    var followState = useState("");
+    var followUp = followState[0]; var setFollowUp = followState[1];
+    var resultRef = useRef(null);
+
+    var canSubmit = tema.trim().length >= 3 && contexto.trim().length >= 10;
+
+    var handleGenerate = useCallback(function() {
+      if (!canSubmit) return;
+      setGeneratedPrompt(buildPrompt(tema.trim(), contexto.trim()));
+      setCopied(false);
+      setTimeout(function() { if (resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth" }); }, 100);
+    }, [tema, contexto, canSubmit]);
+
+    var handleCopy = useCallback(function() {
+      try { navigator.clipboard.writeText(generatedPrompt); setCopied(true); setTimeout(function() { setCopied(false); }, 2000); }
+      catch(err) { /* Clipboard not available */ }
+    }, [generatedPrompt]);
+
+    var callAPI = useCallback(function(msgs) {
+      setAiLoading(true);
+      setAiError("");
+      fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: msgs }),
+      })
+      .then(function(res) {
+        if (!res.ok) {
+          return res.json().then(function(data) { throw new Error(data.error || "Erro " + res.status); });
+        }
+        return res.json();
+      })
+      .then(function(data) {
+        var text = (data.content || []).filter(function(b) { return b.type === "text"; }).map(function(b) { return b.text; }).join("\n") || "Sem resposta.";
+        setAiResponse(text);
+        setConversation(msgs.concat([{ role: "assistant", content: text }]));
+        setFollowUp("");
+        setTimeout(function() { if (resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth" }); }, 100);
+      })
+      .catch(function(err) {
+        setAiError(err.message || "Erro na ligacao a API. Tenta novamente.");
+      })
+      .finally(function() {
+        setAiLoading(false);
+      });
+    }, []);
+
+    var handleAI = useCallback(function() {
+      if (!canSubmit || aiLoading) return;
+      setAiResponse("");
+      var msgs = [{ role: "user", content: buildPrompt(tema.trim(), contexto.trim()) }];
+      setConversation([]);
+      callAPI(msgs);
+    }, [tema, contexto, canSubmit, aiLoading, callAPI]);
+
+    var handleFollowUp = useCallback(function() {
+      if (!followUp.trim() || aiLoading) return;
+      var msgs = conversation.concat([{ role: "user", content: followUp.trim() }]);
+      callAPI(msgs);
+    }, [followUp, conversation, aiLoading, callAPI]);
+
+    var handleReset = useCallback(function() {
+      setTema(""); setContexto(""); setGeneratedPrompt(""); setAiResponse(""); setAiError(""); setConversation([]); setFollowUp(""); setCopied(false);
+    }, []);
+
+    return e("div", { style: { minHeight: "100vh", background: "#08080d", color: "#f0f0f0", fontFamily: "'Outfit', -apple-system, sans-serif", padding: "20px 16px 40px" } },
+      e("div", { style: { maxWidth: 520, margin: "0 auto" } },
+
+        // Header
+        e("div", { style: { textAlign: "center", marginBottom: 28 } },
+          e("div", { style: { display: "inline-block", fontSize: 10, letterSpacing: 5, color: "#E94560", textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Mono', monospace", padding: "4px 14px", border: "1px solid rgba(233,69,96,0.25)", borderRadius: 20, marginBottom: 14 } }, "PALCORE"),
+          e("h1", { style: { fontSize: 26, fontWeight: 800, margin: "0 0 4px", letterSpacing: -1, background: "linear-gradient(135deg, #fff 40%, rgba(233,69,96,0.7))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" } }, "Decision Partner"),
+          e("p", { style: { fontSize: 13, color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 300 } }, "O melhor prompt e ser honesto.")
+        ),
+
+        // Tabs
+        e("div", { style: { display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: 24 } },
+          e(TabButton, { active: mode === "generate", onClick: function() { setMode("generate"); } }, "Gerar Prompt"),
+          e(TabButton, { active: mode === "ai", onClick: function() { setMode("ai"); } }, "Modo IA")
+        ),
+
+        // Quick examples
+        e("div", { style: { marginBottom: 20 } },
+          e("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.3)", letterSpacing: 2, textTransform: "uppercase", marginBottom: 8, fontFamily: "'DM Mono', monospace" } }, "Exemplos rapidos"),
+          e("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+            EXAMPLES.map(function(ex) {
+              return e("button", { key: ex.label, onClick: function() { setTema(ex.tema); setContexto(ex.ctx); },
+                style: { padding: "6px 12px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.55)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" } }, ex.label);
+            })
+          )
+        ),
+
+        // Form
+        e(InputField, { label: "Tema", value: tema, onChange: setTema, placeholder: "Ex: Mudar de emprego, lancar produto, investimento...", maxLength: 80 }),
+        e(InputField, { label: "Contexto (1-2 frases reais)", value: contexto, onChange: setContexto, placeholder: "Ex: Tenho 15 anos de experiencia em vendas, empresa familiar, quero autonomia.", rows: 3, maxLength: 200 }),
+
+        // Action buttons
+        mode === "generate"
+          ? e("button", { onClick: handleGenerate, disabled: !canSubmit,
+              style: { width: "100%", padding: "14px", fontSize: 14, fontWeight: 700,
+                background: canSubmit ? "linear-gradient(135deg, #E94560, #b8354b)" : "rgba(255,255,255,0.04)",
+                color: canSubmit ? "#fff" : "rgba(255,255,255,0.2)",
+                border: "none", borderRadius: 10, cursor: canSubmit ? "pointer" : "not-allowed",
+                letterSpacing: 0.5, transition: "all 0.2s", fontFamily: "inherit", textTransform: "uppercase" } }, "Gerar Prompt")
+          : e("button", { onClick: handleAI, disabled: !canSubmit || aiLoading,
+              style: { width: "100%", padding: "14px", fontSize: 14, fontWeight: 700,
+                background: canSubmit && !aiLoading ? "linear-gradient(135deg, #1a8a5c, #0f6b45)" : "rgba(255,255,255,0.04)",
+                color: canSubmit && !aiLoading ? "#fff" : "rgba(255,255,255,0.2)",
+                border: "none", borderRadius: 10, cursor: canSubmit && !aiLoading ? "pointer" : "not-allowed",
+                letterSpacing: 0.5, transition: "all 0.2s", fontFamily: "inherit", textTransform: "uppercase",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8 } },
+              aiLoading ? e(React.Fragment, null, "A pensar ", e(TypingDots)) : "Perguntar a IA"),
+
+        // Reset
+        (generatedPrompt || aiResponse) && e("button", { onClick: handleReset,
+          style: { width: "100%", padding: "10px", marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.3)", background: "transparent", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit" } }, "Limpar tudo"),
+
+        // Results ref
+        e("div", { ref: resultRef },
+
+          // Generator result
+          mode === "generate" && generatedPrompt && e("div", { style: { marginTop: 28, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, overflow: "hidden" } },
+            e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.04)" } },
+              e("span", { style: { fontSize: 11, color: "rgba(255,255,255,0.4)", letterSpacing: 2, textTransform: "uppercase", fontFamily: "'DM Mono', monospace" } }, "Prompt gerada"),
+              e("button", { onClick: handleCopy,
+                style: { padding: "5px 14px", fontSize: 12, fontWeight: 600, color: copied ? "#00E676" : "#E94560",
+                  background: copied ? "rgba(0,230,118,0.1)" : "rgba(233,69,96,0.1)",
+                  border: "1px solid " + (copied ? "rgba(0,230,118,0.25)" : "rgba(233,69,96,0.25)"),
+                  borderRadius: 6, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s" } },
+                copied ? "\u2713 Copiado" : "Copiar")
+            ),
+            e("pre", { style: { padding: 16, fontSize: 13, lineHeight: 1.6, color: "rgba(255,255,255,0.7)", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontFamily: "'DM Mono', monospace", maxHeight: 400, overflow: "auto" } }, generatedPrompt),
+            e("div", { style: { padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.04)", fontSize: 11, color: "rgba(255,255,255,0.25)", textAlign: "center" } }, "Cola esta prompt no Claude, ChatGPT, ou qualquer LLM.")
+          ),
+
+          // AI error
+          mode === "ai" && aiError && e("div", { style: { marginTop: 24, padding: "14px 16px", background: "rgba(255,23,68,0.06)", border: "1px solid rgba(255,23,68,0.2)", borderRadius: 10, color: "#FF1744", fontSize: 13 } }, aiError),
+
+          // AI response
+          mode === "ai" && aiResponse && e("div", { style: { marginTop: 28 } },
+            e("div", { style: { background: "rgba(26,138,92,0.06)", border: "1px solid rgba(26,138,92,0.15)", borderRadius: 12, padding: "20px 16px" } },
+              e("div", { style: { fontSize: 10, letterSpacing: 2, color: "rgba(26,138,92,0.7)", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", marginBottom: 12 } }, "Resposta do parceiro de decisao"),
+              e("div", { style: { fontSize: 14, lineHeight: 1.7, color: "rgba(255,255,255,0.8)", whiteSpace: "pre-wrap" } }, aiResponse)
+            ),
+            // Follow-up
+            e("div", { style: { marginTop: 16, display: "flex", gap: 8 } },
+              e("input", { value: followUp, onChange: function(ev) { setFollowUp(ev.target.value); }, placeholder: "Responde as perguntas ou pede mais...",
+                onKeyDown: function(ev) { if (ev.key === "Enter") handleFollowUp(); },
+                style: { flex: 1, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, color: "#fff", padding: "12px 14px", fontSize: 14, fontFamily: "inherit", outline: "none" } }),
+              e("button", { onClick: handleFollowUp, disabled: !followUp.trim() || aiLoading,
+                style: { padding: "0 18px", background: followUp.trim() && !aiLoading ? "rgba(26,138,92,0.2)" : "rgba(255,255,255,0.04)", border: "1px solid rgba(26,138,92,0.25)", borderRadius: 10,
+                  color: followUp.trim() ? "#1a8a5c" : "rgba(255,255,255,0.2)", fontSize: 18, cursor: followUp.trim() && !aiLoading ? "pointer" : "not-allowed", fontFamily: "inherit" } }, "\u2192")
+            )
+          )
+        ),
+
+        // Footer
+        e("div", { style: { textAlign: "center", marginTop: 48, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.04)" } },
+          e("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.15)", letterSpacing: 1.5, fontFamily: "'DM Mono', monospace", lineHeight: 1.8 } },
+            "\u00A9 2026 Paulo Branco \u00B7 PALCORE \u00B7 drpal2028.base.eth", e("br"), "Decision Partner v1.0")
+        )
+      )
+    );
+  }
+
+  var root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(e(DecisionPartner));
+  </script>
+</body>
+</html>
