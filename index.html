@@ -417,8 +417,7 @@
                 style: { padding: "0 18px", background: followUp.trim() && !aiLoading ? "rgba(26,138,92,0.2)" : "rgba(255,255,255,0.04)", border: "1px solid rgba(26,138,92,0.25)", borderRadius: 10,
                   color: followUp.trim() ? "#1a8a5c" : "rgba(255,255,255,0.2)", fontSize: 18, cursor: followUp.trim() && !aiLoading ? "pointer" : "not-allowed", fontFamily: "inherit" } }, "\u2192")
             )
-          )
-        ),
+          ),
 
           // Arena error
           mode === "arena" && arenaError && e("div", { style: { marginTop: 24, padding: "14px 16px", background: "rgba(255,23,68,0.06)", border: "1px solid rgba(255,23,68,0.2)", borderRadius: 10, color: "#FF1744", fontSize: 13 } }, arenaError),
@@ -484,7 +483,7 @@
               mergeScore && e(FocusScoreCard, { result: mergeScore })
             )
           )
-        ),
+        ), // end resultRef div
 
         // Footer
         e("div", { style: { textAlign: "center", marginTop: 48, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.04)" } },
