@@ -49,6 +49,11 @@
 
   var API_ENDPOINT = "/api/decision";
   var ARENA_ENDPOINT = "/api/arena";
+  var SUPABASE_URL = "https://btkdpjlltekssobfzdhu.supabase.co";
+  var SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0a2RwamxsdGVrc3NvYmZ6ZGh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMzNjI5MDAsImV4cCI6MjA1ODkzODkwMH0.KEOZ3ePCdiZ1TIpfcCyrx4S1F_431d4674PpvMgetXo";
+  function saveEval(app, question, responseText, model, result) {
+    fetch(SUPABASE_URL+"/rest/v1/palcore_evaluations",{method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON,"Authorization":"Bearer "+SUPABASE_ANON,"Prefer":"return=minimal"},body:JSON.stringify({app:app,question:question||null,response_text:(responseText||"").substring(0,2000),model:model||null,score_global:result.global,score_concisao:result.scores.length,score_foco:result.scores.offTopic,score_repeticao:result.scores.repetition,score_palha:result.scores.filler,words:result.words})}).catch(function(){});
+  }
 
   function buildPrompt(tema, contexto) {
     return "Atua como meu parceiro de decisao: rigoroso, didatico, direto e factual.\n" +
@@ -281,6 +286,8 @@
         setAiResponse(text);
         setConversation(msgs.concat([{ role: "assistant", content: text }]));
         setFollowUp("");
+        var aiEval = fmAnalyze(text, tema.trim() + " " + contexto.trim());
+        saveEval("decision-partner-ai", tema.trim(), text, "Claude Sonnet 4", aiEval);
         setTimeout(function() { if (resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth" }); }, 100);
       })
       .catch(function(err) {
@@ -318,6 +325,8 @@
         if (data.claude && data.claude.text) scores.claude = fmAnalyze(data.claude.text, q);
         if (data.gpt && data.gpt.text) scores.gpt = fmAnalyze(data.gpt.text, q);
         setArenaScores(scores);
+        if (scores.claude) saveEval("arena-claude", tema.trim(), data.claude.text, "Claude Sonnet 4", scores.claude);
+        if (scores.gpt) saveEval("arena-gpt", tema.trim(), data.gpt.text, "GPT-4o", scores.gpt);
         setTimeout(function() { if (resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth" }); }, 100);
       })
       .catch(function(err) { setArenaError(err.message || "Erro na Arena."); })
@@ -333,7 +342,9 @@
       .then(function(data) {
         var text = (data.content || []).filter(function(b) { return b.type === "text"; }).map(function(b) { return b.text; }).join("\n") || "Sem resposta.";
         setMergeResult(text);
-        setMergeScore(fmAnalyze(text, tema.trim() + " " + contexto.trim()));
+        var ms = fmAnalyze(text, tema.trim() + " " + contexto.trim());
+        setMergeScore(ms);
+        saveEval("arena-merge", tema.trim(), text, "Claude (merge)", ms);
       })
       .catch(function(err) { setArenaError(err.message); })
       .finally(function() { setMergeLoading(false); });
