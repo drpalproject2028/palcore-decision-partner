@@ -120,8 +120,8 @@
   }
   function MiniScoreBar(props) {
     var col=props.score===null?"#555":props.score>=85?"#00E676":props.score>=60?"#FFD600":props.score>=40?"#FF9100":"#FF1744";
-    return e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:4}},
-      e("span",{style:{fontSize:10,color:"rgba(255,255,255,0.5)",width:16,textAlign:"center"}},props.icon),
+    return e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:5}},
+      e("span",{style:{fontSize:10,color:"rgba(255,255,255,0.5)",width:60,textAlign:"left",whiteSpace:"nowrap"}},props.icon+" "+props.label),
       e("div",{style:{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.06)",overflow:"hidden"}},
         e("div",{style:{height:"100%",width:props.score===null?"0%":props.score+"%",background:col,borderRadius:2,transition:"width 0.5s ease"}})),
       e("span",{style:{fontSize:10,fontWeight:700,color:col,fontFamily:"'DM Mono',monospace",width:28,textAlign:"right"}},props.score===null?"--":props.score)
@@ -129,9 +129,34 @@
   }
   function FocusScoreCard(props) {
     var r=props.result;if(!r)return null;
-    return e("div",{style:{display:"flex",gap:12,alignItems:"center",marginTop:12,padding:"10px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid rgba(255,255,255,0.05)"}},
-      e(MiniScoreRing,{value:r.global,size:50}),
-      e("div",{style:{flex:1}},FM_CRITERIA.map(function(c){return e(MiniScoreBar,{key:c.id,icon:c.icon,score:r.scores[c.id]});}))
+    return e("div",{style:{marginTop:12,padding:"10px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid rgba(255,255,255,0.05)"}},
+      e("div",{style:{display:"flex",gap:12,alignItems:"center"}},
+        e(MiniScoreRing,{value:r.global,size:50}),
+        e("div",{style:{flex:1}},FM_CRITERIA.map(function(c){return e(MiniScoreBar,{key:c.id,icon:c.icon,label:c.label,score:r.scores[c.id]});}))
+      ),
+      e("div",{style:{display:"flex",gap:8,marginTop:10}},
+        e("button",{onClick:function(){
+          var text="PALCORE Focus: "+r.global+"%\n\u{1F4CF} Concisao: "+(r.scores.length||"--")+"%\n\u{1F3AF} Foco: "+(r.scores.offTopic===null?"n/a":r.scores.offTopic+"%")+"\n\u{1F501} Repeticao: "+(r.scores.repetition||"--")+"%\n\u{1F33E} Palha: "+(r.scores.filler||"--")+"%\n\npalcore-decision-partner.vercel.app";
+          if(navigator.share){navigator.share({text:text}).catch(function(){});}else{try{navigator.clipboard.writeText(text);}catch(e){}alert("Copiado!");}
+        },style:{flex:1,padding:"8px",fontSize:11,fontWeight:600,color:"#00E676",background:"rgba(0,230,118,0.08)",border:"1px solid rgba(0,230,118,0.2)",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}},"\u{1F4E4} Partilhar"),
+        e("button",{onClick:function(){
+          var c=document.createElement("canvas");c.width=600;c.height=400;var x=c.getContext("2d");
+          x.fillStyle="#08080d";x.fillRect(0,0,600,400);
+          x.fillStyle="#E94560";x.font="bold 14px sans-serif";x.textAlign="center";x.fillText("PALCORE Decision Partner",300,35);
+          var sc=r.global,scCol=sc>=85?"#00E676":sc>=60?"#FFD600":sc>=40?"#FF9100":"#FF1744";
+          x.fillStyle=scCol;x.font="bold 64px monospace";x.fillText(sc.toString(),300,120);
+          x.fillStyle="rgba(255,255,255,0.4)";x.font="bold 12px monospace";x.fillText("FOCUS SCORE",300,145);
+          var items=[{l:"Concisao",s:r.scores.length},{l:"Foco",s:r.scores.offTopic},{l:"Repeticao",s:r.scores.repetition},{l:"Palha",s:r.scores.filler}];
+          items.forEach(function(it,i){var y=180+i*45;var ic=it.s===null?"#555":it.s>=85?"#00E676":it.s>=60?"#FFD600":it.s>=40?"#FF9100":"#FF1744";
+            x.fillStyle="rgba(255,255,255,0.6)";x.font="14px sans-serif";x.textAlign="left";x.fillText(it.l,80,y+14);
+            x.fillStyle="rgba(255,255,255,0.06)";x.fillRect(200,y+4,280,10);
+            if(it.s!==null&&it.s>0){x.fillStyle=ic;x.fillRect(200,y+4,280*(it.s/100),10);}
+            x.fillStyle=ic;x.font="bold 14px monospace";x.textAlign="right";x.fillText(it.s===null?"--":it.s+"%",520,y+14);
+          });
+          x.fillStyle="rgba(255,255,255,0.15)";x.font="10px sans-serif";x.textAlign="center";x.fillText("\u00A9 2026 Paulo Branco \u00B7 PALCORE \u00B7 drpal2028.base.eth",300,385);
+          var link=document.createElement("a");link.download="focus-score-"+sc+".png";link.href=c.toDataURL("image/png");link.click();
+        },style:{flex:1,padding:"8px",fontSize:11,fontWeight:600,color:"#E94560",background:"rgba(233,69,96,0.08)",border:"1px solid rgba(233,69,96,0.2)",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}},"\u{1F4F7} Download PNG")
+      )
     );
   }
 
