@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PALCORE Decision Partner — Parceiro de decisao com IA</title>
   <meta name="description" content="Gera prompts estruturadas ou pede ajuda directa a IA para tomar decisoes. Ferramenta gratuita PALCORE.">
-  <meta property="og:title" content="PALCORE Decision Partner v1.0">
+  <meta property="og:title" content="PALCORE Decision Partner v1.1 — Arena Mode">
   <meta property="og:description" content="O melhor prompt e ser honesto. Gera prompts ou pede ajuda a IA.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://palcore-decision-partner.netlify.app">
@@ -48,6 +48,7 @@
   var e = React.createElement;
 
   var API_ENDPOINT = "/api/decision";
+  var ARENA_ENDPOINT = "/api/arena";
 
   function buildPrompt(tema, contexto) {
     return "Atua como meu parceiro de decisao: rigoroso, didatico, direto e factual.\n" +
@@ -76,6 +77,62 @@
       "Criterio de qualidade (auto-check):\n" +
       "Especifica? Executavel em 24h? Mensuravel? Adequada ao meu contexto?\n" +
       "Se algum for \"nao\", refaz mais simples.";
+  }
+
+  // ── Focus Meter Algorithm (inline from palcore-focus-meter) ──
+  var PT_STOPWORDS = new Set(["para","como","mais","este","esta","esse","essa","isso","aqui","onde","quando","porque","qual","quais","cada","muito","menos","tambem","ainda","mesmo","toda","todo","todos","todas","pode","podem","deve","devem","sido","sendo","seria","foram","tinha","tenho","tens","dele","dela","deles","delas","pela","pelo","pelos","sobre","entre","depois","antes","desde","durante","the","and","that","this","with","from","your","have","been","will","would","could","should","they","them","their","there","these","those","which","about","into","also","some","than","then","what","when","where"]);
+  var FILLER_PATTERNS = ["e importante notar","vale a pena mencionar","it's worth noting","it's important to","let me know if","hope this helps","feel free to","don't hesitate","happy to help","glad you asked","great question","that's a great","absolutely","certainly","of course","como mencionei","como referi","espero que ajude","nao hesites","fico feliz","boa pergunta","excelente questao","sem duvida","com certeza","genuinely","honestly","straightforward","i'd be happy to","as an ai","i understand","that said","in summary","como ia","dito isto","it is important","it is worth","i hope this"];
+  var FM_CRITERIA = [
+    { id: "length", label: "Concisao", icon: "\u{1F4CF}" },
+    { id: "offTopic", label: "Foco", icon: "\u{1F3AF}" },
+    { id: "repetition", label: "Repeticao", icon: "\u{1F501}" },
+    { id: "filler", label: "Palha", icon: "\u{1F33E}" },
+  ];
+  function fmNormalize(t) { return t.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase(); }
+  function fmAnalyze(text, question) {
+    var sc = {}, nt = {}, norm = fmNormalize(text), wc = text.split(/\s+/).filter(function(w){return w.length>0;}).length, ch = text.length;
+    var sents = text.split(/[.!?]+/).filter(function(s){return s.trim().length>0;});
+    // Concisao
+    if(ch<=400){sc.length=100;nt.length=wc+" palavras";}else if(ch<=800){sc.length=85;nt.length=wc+" palavras";}else if(ch<=1500){sc.length=60;nt.length=wc+" palavras";}else{sc.length=Math.max(20,60-Math.floor((ch-1500)/100)*5);nt.length=wc+" palavras";}
+    // Foco
+    if(question&&question.trim().length>10){var qW=fmNormalize(question).split(/\s+/).filter(function(w){return w.length>3&&!PT_STOPWORDS.has(w);});var rN=fmNormalize(text);var m=qW.filter(function(w){return rN.includes(w);});var r=qW.length>0?m.length/qW.length:1;if(r>=0.5){sc.offTopic=100;nt.offTopic="Alinhado";}else if(r>=0.25){sc.offTopic=70;nt.offTopic="Algum desvio";}else{sc.offTopic=40;nt.offTopic="Desalinhado";}}else{sc.offTopic=null;nt.offTopic="n/a";}
+    // Repeticao
+    var sT=sents.map(function(s){return fmNormalize(s.trim());});var rC=0;for(var i=0;i<sT.length;i++){for(var j=i+1;j<sT.length;j++){var wA=sT[i].split(/\s+/).filter(function(w){return w.length>3;});var wB=sT[j].split(/\s+/).filter(function(w){return w.length>3;});if(wA.length<5||wB.length<5)continue;var ov=wA.filter(function(w){return wB.includes(w);});if(ov.length/Math.min(wA.length,wB.length)>0.5)rC++;}}
+    if(rC===0){sc.repetition=100;nt.repetition="Sem repeticoes";}else if(rC<=2){sc.repetition=70;nt.repetition=rC+" repeticao(oes)";}else{sc.repetition=Math.max(20,70-rC*15);nt.repetition=rC+" repeticoes";}
+    // Palha
+    var ff=FILLER_PATTERNS.filter(function(p){return norm.includes(p);});if(ff.length===0){sc.filler=100;nt.filler="Zero palha";}else if(ff.length<=2){sc.filler=75;nt.filler=ff.length+" expressao(oes)";}else{sc.filler=Math.max(15,75-ff.length*12);nt.filler=ff.length+" expressoes";}
+    var vs=Object.values(sc).filter(function(s){return s!==null;});var gl=vs.length>0?Math.round(vs.reduce(function(a,b){return a+b;},0)/vs.length):0;
+    return {scores:sc,notes:nt,global:gl,words:wc};
+  }
+
+  // ── Mini Focus Meter UI Components ──
+  function MiniScoreRing(props) {
+    var v=props.value,sz=props.size||56,r=(sz-8)/2,c=2*Math.PI*r,off=c-(v/100)*c;
+    var col=v>=85?"#00E676":v>=60?"#FFD600":v>=40?"#FF9100":"#FF1744";
+    return e("div",{style:{position:"relative",width:sz,height:sz,flexShrink:0}},
+      e("svg",{width:sz,height:sz,style:{transform:"rotate(-90deg)"}},
+        e("circle",{cx:sz/2,cy:sz/2,r:r,fill:"none",stroke:"rgba(255,255,255,0.08)",strokeWidth:"4"}),
+        e("circle",{cx:sz/2,cy:sz/2,r:r,fill:"none",stroke:col,strokeWidth:"4",strokeDasharray:c,strokeDashoffset:off,strokeLinecap:"round",style:{transition:"stroke-dashoffset 0.6s ease"}})
+      ),
+      e("div",{style:{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}},
+        e("span",{style:{fontSize:sz*0.32,fontWeight:800,color:col,fontFamily:"'DM Mono',monospace"}},v))
+    );
+  }
+  function MiniScoreBar(props) {
+    var col=props.score===null?"#555":props.score>=85?"#00E676":props.score>=60?"#FFD600":props.score>=40?"#FF9100":"#FF1744";
+    return e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:4}},
+      e("span",{style:{fontSize:10,color:"rgba(255,255,255,0.5)",width:16,textAlign:"center"}},props.icon),
+      e("div",{style:{flex:1,height:4,borderRadius:2,background:"rgba(255,255,255,0.06)",overflow:"hidden"}},
+        e("div",{style:{height:"100%",width:props.score===null?"0%":props.score+"%",background:col,borderRadius:2,transition:"width 0.5s ease"}})),
+      e("span",{style:{fontSize:10,fontWeight:700,color:col,fontFamily:"'DM Mono',monospace",width:28,textAlign:"right"}},props.score===null?"--":props.score)
+    );
+  }
+  function FocusScoreCard(props) {
+    var r=props.result;if(!r)return null;
+    return e("div",{style:{display:"flex",gap:12,alignItems:"center",marginTop:12,padding:"10px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid rgba(255,255,255,0.05)"}},
+      e(MiniScoreRing,{value:r.global,size:50}),
+      e("div",{style:{flex:1}},FM_CRITERIA.map(function(c){return e(MiniScoreBar,{key:c.id,icon:c.icon,score:r.scores[c.id]});}))
+    );
   }
 
   var EXAMPLES = [
@@ -150,6 +207,21 @@
     var followState = useState("");
     var followUp = followState[0]; var setFollowUp = followState[1];
     var resultRef = useRef(null);
+    // Arena state
+    var arenaResState = useState(null);
+    var arenaResults = arenaResState[0]; var setArenaResults = arenaResState[1];
+    var arenaScState = useState(null);
+    var arenaScores = arenaScState[0]; var setArenaScores = arenaScState[1];
+    var arenaLoadState = useState(false);
+    var arenaLoading = arenaLoadState[0]; var setArenaLoading = arenaLoadState[1];
+    var arenaErrState = useState("");
+    var arenaError = arenaErrState[0]; var setArenaError = arenaErrState[1];
+    var mergeResState = useState(null);
+    var mergeResult = mergeResState[0]; var setMergeResult = mergeResState[1];
+    var mergeScState = useState(null);
+    var mergeScore = mergeScState[0]; var setMergeScore = mergeScState[1];
+    var mergeLoadState = useState(false);
+    var mergeLoading = mergeLoadState[0]; var setMergeLoading = mergeLoadState[1];
 
     var canSubmit = tema.trim().length >= 3 && contexto.trim().length >= 10;
 
@@ -208,8 +280,43 @@
       callAPI(msgs);
     }, [followUp, conversation, aiLoading, callAPI]);
 
+    var handleArena = useCallback(function() {
+      if (!canSubmit || arenaLoading) return;
+      setArenaResults(null); setArenaScores(null); setMergeResult(null); setMergeScore(null); setArenaError(""); setArenaLoading(true);
+      var prompt = buildPrompt(tema.trim(), contexto.trim());
+      fetch(ARENA_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }) })
+      .then(function(res) { if (!res.ok) return res.json().then(function(d) { throw new Error(d.error || "Erro " + res.status); }); return res.json(); })
+      .then(function(data) {
+        setArenaResults(data);
+        var q = tema.trim() + " " + contexto.trim();
+        var scores = {};
+        if (data.claude && data.claude.text) scores.claude = fmAnalyze(data.claude.text, q);
+        if (data.gpt && data.gpt.text) scores.gpt = fmAnalyze(data.gpt.text, q);
+        setArenaScores(scores);
+        setTimeout(function() { if (resultRef.current) resultRef.current.scrollIntoView({ behavior: "smooth" }); }, 100);
+      })
+      .catch(function(err) { setArenaError(err.message || "Erro na Arena."); })
+      .finally(function() { setArenaLoading(false); });
+    }, [tema, contexto, canSubmit, arenaLoading]);
+
+    var handleMerge = useCallback(function() {
+      if (!arenaResults || mergeLoading) return;
+      setMergeLoading(true); setMergeResult(null); setMergeScore(null);
+      var mergePrompt = "Tens duas respostas ao mesmo problema. Funde numa unica resposta que combine o melhor de ambas. Maximo 300 palavras, PT-PT. Sem mencionar que sao duas respostas separadas — escreve como se fosse a tua propria analise.\n\nResposta A:\n" + (arenaResults.claude?.text || "(indisponivel)") + "\n\nResposta B:\n" + (arenaResults.gpt?.text || "(indisponivel)");
+      fetch(API_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: mergePrompt }] }) })
+      .then(function(res) { if (!res.ok) return res.json().then(function(d) { throw new Error(d.error || "Erro " + res.status); }); return res.json(); })
+      .then(function(data) {
+        var text = (data.content || []).filter(function(b) { return b.type === "text"; }).map(function(b) { return b.text; }).join("\n") || "Sem resposta.";
+        setMergeResult(text);
+        setMergeScore(fmAnalyze(text, tema.trim() + " " + contexto.trim()));
+      })
+      .catch(function(err) { setArenaError(err.message); })
+      .finally(function() { setMergeLoading(false); });
+    }, [arenaResults, mergeLoading, tema, contexto]);
+
     var handleReset = useCallback(function() {
       setTema(""); setContexto(""); setGeneratedPrompt(""); setAiResponse(""); setAiError(""); setConversation([]); setFollowUp(""); setCopied(false);
+      setArenaResults(null); setArenaScores(null); setArenaError(""); setMergeResult(null); setMergeScore(null);
     }, []);
 
     return e("div", { style: { minHeight: "100vh", background: "#08080d", color: "#f0f0f0", fontFamily: "'Outfit', -apple-system, sans-serif", padding: "20px 16px 40px" } },
@@ -225,7 +332,8 @@
         // Tabs
         e("div", { style: { display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: 24 } },
           e(TabButton, { active: mode === "generate", onClick: function() { setMode("generate"); } }, "Gerar Prompt"),
-          e(TabButton, { active: mode === "ai", onClick: function() { setMode("ai"); } }, "Modo IA")
+          e(TabButton, { active: mode === "ai", onClick: function() { setMode("ai"); } }, "Modo IA"),
+          e(TabButton, { active: mode === "arena", onClick: function() { setMode("arena"); } }, "Arena")
         ),
 
         // Quick examples
@@ -251,17 +359,26 @@
                 color: canSubmit ? "#fff" : "rgba(255,255,255,0.2)",
                 border: "none", borderRadius: 10, cursor: canSubmit ? "pointer" : "not-allowed",
                 letterSpacing: 0.5, transition: "all 0.2s", fontFamily: "inherit", textTransform: "uppercase" } }, "Gerar Prompt")
-          : e("button", { onClick: handleAI, disabled: !canSubmit || aiLoading,
+          : mode === "ai"
+          ? e("button", { onClick: handleAI, disabled: !canSubmit || aiLoading,
               style: { width: "100%", padding: "14px", fontSize: 14, fontWeight: 700,
                 background: canSubmit && !aiLoading ? "linear-gradient(135deg, #1a8a5c, #0f6b45)" : "rgba(255,255,255,0.04)",
                 color: canSubmit && !aiLoading ? "#fff" : "rgba(255,255,255,0.2)",
                 border: "none", borderRadius: 10, cursor: canSubmit && !aiLoading ? "pointer" : "not-allowed",
                 letterSpacing: 0.5, transition: "all 0.2s", fontFamily: "inherit", textTransform: "uppercase",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8 } },
-              aiLoading ? e(React.Fragment, null, "A pensar ", e(TypingDots)) : "Perguntar a IA"),
+              aiLoading ? e(React.Fragment, null, "A pensar ", e(TypingDots)) : "Perguntar a IA")
+          : e("button", { onClick: handleArena, disabled: !canSubmit || arenaLoading,
+              style: { width: "100%", padding: "14px", fontSize: 14, fontWeight: 700,
+                background: canSubmit && !arenaLoading ? "linear-gradient(135deg, #1a8a5c, #4A90D9)" : "rgba(255,255,255,0.04)",
+                color: canSubmit && !arenaLoading ? "#fff" : "rgba(255,255,255,0.2)",
+                border: "none", borderRadius: 10, cursor: canSubmit && !arenaLoading ? "pointer" : "not-allowed",
+                letterSpacing: 0.5, transition: "all 0.2s", fontFamily: "inherit", textTransform: "uppercase",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8 } },
+              arenaLoading ? e(React.Fragment, null, "A comparar ", e(TypingDots)) : "Comparar Claude vs GPT"),
 
         // Reset
-        (generatedPrompt || aiResponse) && e("button", { onClick: handleReset,
+        (generatedPrompt || aiResponse || arenaResults) && e("button", { onClick: handleReset,
           style: { width: "100%", padding: "10px", marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.3)", background: "transparent", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit" } }, "Limpar tudo"),
 
         // Results ref
@@ -303,10 +420,76 @@
           )
         ),
 
+          // Arena error
+          mode === "arena" && arenaError && e("div", { style: { marginTop: 24, padding: "14px 16px", background: "rgba(255,23,68,0.06)", border: "1px solid rgba(255,23,68,0.2)", borderRadius: 10, color: "#FF1744", fontSize: 13 } }, arenaError),
+
+          // Arena results
+          mode === "arena" && arenaResults && e("div", { style: { marginTop: 28 } },
+
+            // Claude card
+            e("div", { style: { background: "rgba(26,138,92,0.06)", border: "1px solid rgba(26,138,92,0.15)", borderRadius: 12, padding: "16px", marginBottom: 12, position: "relative" } },
+              e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+                e("div", { style: { fontSize: 11, letterSpacing: 2, color: "#1a8a5c", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", fontWeight: 700 } }, "Claude Sonnet 4"),
+                arenaScores && arenaScores.claude && arenaScores.gpt && arenaScores.claude.global >= arenaScores.gpt.global && e("span", { style: { fontSize: 9, padding: "2px 8px", background: "rgba(26,138,92,0.2)", color: "#1a8a5c", borderRadius: 10, fontWeight: 700, letterSpacing: 1 } }, arenaScores.claude.global > arenaScores.gpt.global ? "VENCEDOR" : "EMPATE")
+              ),
+              arenaResults.claude && arenaResults.claude.text
+                ? e(React.Fragment, null,
+                    e("div", { style: { fontSize: 13, lineHeight: 1.7, color: "rgba(255,255,255,0.8)", whiteSpace: "pre-wrap" } }, arenaResults.claude.text),
+                    arenaScores && arenaScores.claude && e(FocusScoreCard, { result: arenaScores.claude })
+                  )
+                : e("div", { style: { fontSize: 13, color: "#FF1744" } }, (arenaResults.claude && arenaResults.claude.error) || "Sem resposta")
+            ),
+
+            // GPT card
+            e("div", { style: { background: "rgba(74,144,217,0.06)", border: "1px solid rgba(74,144,217,0.15)", borderRadius: 12, padding: "16px", marginBottom: 12, position: "relative" } },
+              e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+                e("div", { style: { fontSize: 11, letterSpacing: 2, color: "#4A90D9", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", fontWeight: 700 } }, "GPT-4o"),
+                arenaScores && arenaScores.gpt && arenaScores.claude && arenaScores.gpt.global > arenaScores.claude.global && e("span", { style: { fontSize: 9, padding: "2px 8px", background: "rgba(74,144,217,0.2)", color: "#4A90D9", borderRadius: 10, fontWeight: 700, letterSpacing: 1 } }, "VENCEDOR")
+              ),
+              arenaResults.gpt && arenaResults.gpt.text
+                ? e(React.Fragment, null,
+                    e("div", { style: { fontSize: 13, lineHeight: 1.7, color: "rgba(255,255,255,0.8)", whiteSpace: "pre-wrap" } }, arenaResults.gpt.text),
+                    arenaScores && arenaScores.gpt && e(FocusScoreCard, { result: arenaScores.gpt })
+                  )
+                : e("div", { style: { fontSize: 13, color: "#FF1744" } }, (arenaResults.gpt && arenaResults.gpt.error) || "Sem resposta")
+            ),
+
+            // Score comparison
+            arenaScores && arenaScores.claude && arenaScores.gpt && e("div", { style: { display: "flex", justifyContent: "center", gap: 24, padding: "12px 0", marginBottom: 12 } },
+              e("div", { style: { textAlign: "center" } },
+                e("div", { style: { fontSize: 28, fontWeight: 800, color: "#1a8a5c", fontFamily: "'DM Mono', monospace" } }, arenaScores.claude.global),
+                e("div", { style: { fontSize: 9, color: "rgba(255,255,255,0.4)", letterSpacing: 2, textTransform: "uppercase" } }, "Claude")
+              ),
+              e("div", { style: { fontSize: 20, color: "rgba(255,255,255,0.2)", alignSelf: "center" } }, "vs"),
+              e("div", { style: { textAlign: "center" } },
+                e("div", { style: { fontSize: 28, fontWeight: 800, color: "#4A90D9", fontFamily: "'DM Mono', monospace" } }, arenaScores.gpt.global),
+                e("div", { style: { fontSize: 9, color: "rgba(255,255,255,0.4)", letterSpacing: 2, textTransform: "uppercase" } }, "GPT")
+              )
+            ),
+
+            // Merge button
+            (arenaResults.claude && arenaResults.claude.text && arenaResults.gpt && arenaResults.gpt.text) && !mergeResult && e("button", { onClick: handleMerge, disabled: mergeLoading,
+              style: { width: "100%", padding: "14px", fontSize: 14, fontWeight: 700,
+                background: !mergeLoading ? "linear-gradient(135deg, #c9a84c, #a88a3a)" : "rgba(255,255,255,0.04)",
+                color: !mergeLoading ? "#fff" : "rgba(255,255,255,0.2)",
+                border: "none", borderRadius: 10, cursor: !mergeLoading ? "pointer" : "not-allowed",
+                letterSpacing: 0.5, transition: "all 0.2s", fontFamily: "inherit", textTransform: "uppercase",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8 } },
+              mergeLoading ? e(React.Fragment, null, "A fundir ", e(TypingDots)) : "\u2728 Fundir o melhor dos dois"),
+
+            // Merged result
+            mergeResult && e("div", { style: { background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.15)", borderRadius: 12, padding: "16px", marginTop: 12 } },
+              e("div", { style: { fontSize: 11, letterSpacing: 2, color: "#c9a84c", textTransform: "uppercase", fontFamily: "'DM Mono', monospace", fontWeight: 700, marginBottom: 10 } }, "\u2728 Resultado fundido"),
+              e("div", { style: { fontSize: 13, lineHeight: 1.7, color: "rgba(255,255,255,0.8)", whiteSpace: "pre-wrap" } }, mergeResult),
+              mergeScore && e(FocusScoreCard, { result: mergeScore })
+            )
+          )
+        ),
+
         // Footer
         e("div", { style: { textAlign: "center", marginTop: 48, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.04)" } },
           e("div", { style: { fontSize: 10, color: "rgba(255,255,255,0.15)", letterSpacing: 1.5, fontFamily: "'DM Mono', monospace", lineHeight: 1.8 } },
-            "\u00A9 2026 Paulo Branco \u00B7 PALCORE \u00B7 drpal2028.base.eth", e("br"), "Decision Partner v1.0")
+            "\u00A9 2026 Paulo Branco \u00B7 PALCORE \u00B7 drpal2028.base.eth", e("br"), "Decision Partner v1.1")
         )
       )
     );

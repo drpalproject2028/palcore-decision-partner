@@ -1,6 +1,7 @@
 {
   "rewrites": [
-    { "source": "/api/decision", "destination": "/api/decision" }
+    { "source": "/api/decision", "destination": "/api/decision" },
+    { "source": "/api/arena", "destination": "/api/arena" }
   ],
   "headers": [
     {
